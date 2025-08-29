@@ -16,7 +16,7 @@ interface ProductCardProps {
     merchandise_categories?: { name: string };
   };
   onAddToCart: (productId: string) => void;
-  onToggleWishlist: (productId: string) => void;
+  onToggleWishlist: () => void;
   className?: string;
 }
 
@@ -64,9 +64,9 @@ export function ProductCard({ product, onAddToCart, onToggleWishlist, className 
             size="xs"
             variant="ghost"
             className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 h-7 w-7 sm:h-8 sm:w-8 p-0 bg-white/90 hover:bg-white shadow-sm rounded-full"
-            onClick={() => onToggleWishlist(product.id)}
+            onClick={onToggleWishlist}
           >
-            <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500" />
           </Button>
         </div>
 

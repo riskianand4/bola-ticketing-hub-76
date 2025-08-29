@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useCart } from "@/context/CartContext";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { useWishlist } from "@/components/WishlistManager";
 import { LoadingCard } from "@/components/ui/loading-spinner";
 import { SearchInput } from "@/components/ui/search-input";
 import { CategoryPills } from "@/components/ui/category-pills";
@@ -19,6 +20,7 @@ export default function ShopPage() {
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { addItem } = useCart();
+  const { toggleWishlist, isInWishlist } = useWishlist();
 
   useEffect(() => {
     fetchCategories();
@@ -110,10 +112,8 @@ export default function ShopPage() {
     }
   };
 
-  const toggleWishlist = (productId: string) => {
-    toast.success("Ditambahkan ke wishlist", {
-      description: "Produk disimpan untuk nanti"
-    });
+  const handleToggleWishlist = async (product: any) => {
+    await toggleWishlist(product);
   };
 
   const filteredProducts = products.filter(product => {
@@ -208,7 +208,7 @@ export default function ShopPage() {
                 key={product.id}
                 product={product}
                 onAddToCart={addToCart}
-                onToggleWishlist={toggleWishlist}
+                onToggleWishlist={() => handleToggleWishlist(product)}
               />
             ))}
           </div>

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNewsInteractions } from "@/hooks/useNewsInteractions";
+import { NewsCommentSection } from "@/components/NewsCommentSection";
 
 export default function NewsDetailPage() {
   const { id } = useParams();
@@ -304,6 +305,9 @@ export default function NewsDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Comments Section */}
+          <NewsCommentSection newsId={id!} />
         </div>
       </div>
     </div>

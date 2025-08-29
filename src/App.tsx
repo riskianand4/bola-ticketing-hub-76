@@ -14,6 +14,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/AdminRoute";
 import { ChatBot } from "./components/ChatBot";
 import { PushNotificationManager } from "./components/PushNotificationManager";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 import Index from "./pages/Index";
 import NewsPage from "./pages/NewsPage";
 import NewsDetailPage from "./pages/NewsDetailPage";
@@ -119,6 +120,7 @@ const App = () => (
                 <Toaster />
                 <Sonner />
                 <PushNotificationManager />
+                <OfflineIndicator />
                 <BrowserRouter
                   future={{
                     v7_startTransition: true,
