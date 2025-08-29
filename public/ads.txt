@@ -1,0 +1,7 @@
+# ads.txt file for aceh.info
+# This file is used to authorize digital ad sellers
+
+# Google AdSense (replace with your publisher ID when you get AdSense approval)
+# google.com, pub-XXXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+
+# Add other ad networks here when needed

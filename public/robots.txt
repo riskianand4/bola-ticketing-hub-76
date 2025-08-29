@@ -1,0 +1,27 @@
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: *
+Allow: /
+Crawl-delay: 2
+
+# Sitemap
+Sitemap: https://aceh.info/sitemap.xml
+
+# Block sensitive areas
+Disallow: /admin/
+Disallow: /api/
+Disallow: /*.json$
+Disallow: /payment/
+Disallow: /scanner/

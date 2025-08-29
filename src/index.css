@@ -1,0 +1,311 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root,
+  .theme-default {
+    --background: 216 14% 10%;           /* Dark Gray (#1A1A1A) */
+    --foreground: 0 0% 100%;             /* White text */
+
+    --card: 0 0% 18%;                    /* Charcoal (#2D2D2D) */
+    --card-foreground: 0 0% 100%;        /* White text */
+
+    --popover: 0 0% 18%;                 /* Charcoal */
+    --popover-foreground: 0 0% 100%;     /* White text */
+
+    --primary: 0 100% 40%;               /* Persiraja Red (#CC0000) */
+    --primary-foreground: 0 0% 100%;     /* White text */
+
+    --secondary: 20 85% 35%;             /* Persiraja Gold (#B8860B) */
+    --secondary-foreground: 0 0% 100%;   /* White text */
+
+    --muted: 0 0% 25%;                   /* Dark Gray (#404040) */
+    --muted-foreground: 0 0% 80%;        /* Light Gray (#CCCCCC) */
+
+    --accent: 20 85% 35%;                /* Gold accent */
+    --accent-foreground: 0 0% 100%;      /* White text */
+
+    --destructive: 0 84% 60%;            /* Error red */
+    --destructive-foreground: 0 0% 100%; /* White text */
+
+    --success: 120 100% 20%;             /* Dark Green (#006400) */
+    --success-foreground: 0 0% 100%;     /* White text */
+
+    --warning: 30 100% 50%;              /* Dark Orange (#FF8C00) */
+    --warning-foreground: 0 0% 100%;     /* White text */
+
+    --border: 0 0% 25%;                  /* Dark Gray borders */
+    --input: 0 0% 18%;                   /* Dark input background */
+    --ring: 0 100% 40%;                  /* Red focus ring */
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 216 14% 8%;    /* Darker sidebar */
+    --sidebar-foreground: 0 0% 100%;     /* White text */
+    --sidebar-primary: 0 100% 40%;       /* Red primary */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 0 0% 20%;          /* Dark accent */
+    --sidebar-accent-foreground: 0 0% 100%; /* White text */
+    --sidebar-border: 0 0% 20%;          /* Dark border */
+    --sidebar-ring: 0 100% 40%;          /* Red ring */
+  }
+
+  .theme-anichin {
+    --background: 210 13% 7%;            /* Very Dark Blue-Gray */
+    --foreground: 0 0% 100%;             /* White text */
+
+    --card: 215 16% 9%;                  /* Dark Blue-Gray */
+    --card-foreground: 0 0% 100%;        /* White text */
+
+    --popover: 215 16% 9%;               /* Dark Blue-Gray */
+    --popover-foreground: 0 0% 100%;     /* White text */
+
+    --primary: 14 100% 57%;              /* Orange-Red (#FF5722) */
+    --primary-foreground: 0 0% 100%;     /* White text */
+
+    --secondary: 215 25% 12%;            /* Darker Blue-Gray */
+    --secondary-foreground: 0 0% 100%;   /* White text */
+
+    --muted: 215 25% 12%;                /* Darker Blue-Gray */
+    --muted-foreground: 215 20% 65%;     /* Light Gray */
+
+    --accent: 14 76% 50%;                /* Darker Orange */
+    --accent-foreground: 0 0% 100%;      /* White text */
+
+    --destructive: 0 72% 51%;            /* Error red */
+    --destructive-foreground: 0 0% 100%; /* White text */
+
+    --success: 120 100% 20%;             /* Dark Green */
+    --success-foreground: 0 0% 100%;     /* White text */
+
+    --warning: 30 100% 50%;              /* Orange warning */
+    --warning-foreground: 0 0% 100%;     /* White text */
+
+    --border: 215 25% 15%;               /* Dark Blue-Gray border */
+    --input: 215 25% 15%;                /* Dark Blue-Gray input */
+    --ring: 14 100% 57%;                 /* Orange-Red focus ring */
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 13% 7%;    /* Very Dark Blue-Gray */
+    --sidebar-foreground: 0 0% 100%;     /* White text */
+    --sidebar-primary: 14 100% 57%;      /* Orange-Red */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 215 25% 12%;       /* Dark Blue-Gray */
+    --sidebar-accent-foreground: 0 0% 100%; /* White text */
+    --sidebar-border: 215 25% 15%;       /* Dark Blue-Gray border */
+    --sidebar-ring: 14 100% 57%;         /* Orange-Red ring */
+  }
+
+  .theme-light {
+    --background: 0 0% 100%;              /* Pure White */
+    --foreground: 0 0% 10%;               /* Almost Black */
+
+    --card: 0 0% 98%;                     /* Off White */
+    --card-foreground: 0 0% 10%;          /* Almost Black */
+
+    --popover: 0 0% 100%;                 /* Pure White */
+    --popover-foreground: 0 0% 10%;       /* Almost Black */
+
+    --primary: 0 100% 50%;                /* Bright Red */
+    --primary-foreground: 0 0% 100%;      /* White text */
+
+    --secondary: 43 85% 45%;              /* Golden Yellow */
+    --secondary-foreground: 0 0% 100%;    /* White text */
+
+    --muted: 0 0% 96%;                    /* Light Gray */
+    --muted-foreground: 0 0% 45%;         /* Dark Gray */
+
+    --accent: 43 85% 45%;                 /* Golden accent */
+    --accent-foreground: 0 0% 100%;       /* White text */
+
+    --destructive: 0 84% 60%;             /* Error red */
+    --destructive-foreground: 0 0% 100%;  /* White text */
+
+    --success: 120 100% 25%;              /* Green */
+    --success-foreground: 0 0% 100%;      /* White text */
+
+    --warning: 30 100% 50%;               /* Orange */
+    --warning-foreground: 0 0% 100%;      /* White text */
+
+    --border: 0 0% 90%;                   /* Light Gray borders */
+    --input: 0 0% 100%;                   /* White input background */
+    --ring: 0 100% 50%;                   /* Red focus ring */
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;       /* Off White sidebar */
+    --sidebar-foreground: 0 0% 10%;       /* Almost Black text */
+    --sidebar-primary: 0 100% 50%;        /* Bright Red */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 0 0% 94%;           /* Light accent */
+    --sidebar-accent-foreground: 0 0% 10%; /* Almost Black text */
+    --sidebar-border: 0 0% 90%;           /* Light border */
+    --sidebar-ring: 0 100% 50%;           /* Red ring */
+  }
+
+  .theme-football {
+    --background: 200 50% 8%;             /* Deep Navy Blue */
+    --foreground: 0 0% 100%;              /* White text */
+
+    --card: 200 40% 12%;                  /* Dark Blue */
+    --card-foreground: 0 0% 100%;         /* White text */
+
+    --popover: 200 40% 12%;               /* Dark Blue */
+    --popover-foreground: 0 0% 100%;      /* White text */
+
+    --primary: 142 76% 36%;               /* Football Green (#22C55E) */
+    --primary-foreground: 0 0% 100%;      /* White text */
+
+    --secondary: 217 91% 60%;             /* Electric Blue (#3B82F6) */
+    --secondary-foreground: 0 0% 100%;    /* White text */
+
+    --muted: 200 30% 18%;                 /* Dark Blue-Gray */
+    --muted-foreground: 200 20% 70%;      /* Light Blue-Gray */
+
+    --accent: 262 83% 58%;                /* Purple (#8B5CF6) */
+    --accent-foreground: 0 0% 100%;       /* White text */
+
+    --destructive: 0 72% 51%;             /* Error red */
+    --destructive-foreground: 0 0% 100%;  /* White text */
+
+    --success: 142 76% 36%;               /* Football Green */
+    --success-foreground: 0 0% 100%;      /* White text */
+
+    --warning: 38 92% 50%;                /* Golden Yellow (#FBBF24) */
+    --warning-foreground: 0 0% 10%;       /* Dark text */
+
+    --border: 200 30% 22%;                /* Medium Blue border */
+    --input: 200 40% 12%;                 /* Dark Blue input */
+    --ring: 142 76% 36%;                  /* Green focus ring */
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 200 50% 6%;     /* Darker Navy */
+    --sidebar-foreground: 0 0% 100%;      /* White text */
+    --sidebar-primary: 142 76% 36%;       /* Football Green */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 200 30% 18%;        /* Dark Blue-Gray */
+    --sidebar-accent-foreground: 0 0% 100%; /* White text */
+    --sidebar-border: 200 30% 22%;        /* Medium Blue border */
+    --sidebar-ring: 142 76% 36%;          /* Green ring */
+  }
+
+  .dark {
+    /* Same as default theme since we're using dark theme by default */
+    --background: 216 14% 10%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 18%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 18%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 100% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 43 85% 35%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 25%;
+    --muted-foreground: 0 0% 80%;
+    --accent: 43 85% 35%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 25%;
+    --input: 0 0% 18%;
+    --ring: 0 100% 40%;
+    --sidebar-background: 216 14% 8%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 100% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-ring: 0 100% 40%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  /* Mobile-first responsive typography and spacing */
+  .mobile-compact {
+    @apply text-sm leading-relaxed;
+  }
+  
+  .mobile-card {
+    @apply p-3 rounded-lg;
+  }
+  
+  .mobile-button {
+    @apply px-3 py-2 text-sm rounded-md;
+  }
+  
+  .mobile-title {
+    @apply text-lg font-semibold;
+  }
+  
+  .mobile-subtitle {
+    @apply text-sm text-muted-foreground;
+  }
+  
+  /* Design System Spacing */
+  .space-xs { @apply gap-1; }
+  .space-sm { @apply gap-2; }
+  .space-md { @apply gap-4; }
+  .space-lg { @apply gap-6; }
+  .space-xl { @apply gap-8; }
+  
+  /* Design System Padding */
+  .p-xs { @apply p-2; }
+  .p-sm { @apply p-3; }
+  .p-md { @apply p-4; }
+  .p-lg { @apply p-6; }
+  .p-xl { @apply p-8; }
+  
+  /* Touch-friendly Interactive Elements */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Improved Card Patterns */
+  .card-interactive {
+    @apply hover:shadow-md hover:shadow-primary/10 transition-all duration-200 cursor-pointer;
+  }
+  
+  .card-mobile {
+    @apply p-3 rounded-lg shadow-sm;
+  }
+  
+  /* Typography Hierarchy */
+  .text-heading-lg { @apply text-2xl sm:text-3xl lg:text-4xl font-bold; }
+  .text-heading-md { @apply text-xl sm:text-2xl lg:text-3xl font-bold; }
+  .text-heading-sm { @apply text-lg sm:text-xl font-semibold; }
+  .text-body-lg { @apply text-base sm:text-lg; }
+  .text-body { @apply text-sm sm:text-base; }
+  .text-body-sm { @apply text-xs sm:text-sm; }
+  .text-caption { @apply text-xs text-muted-foreground; }
+  
+  /* Grid Responsive Patterns */
+  .grid-responsive-2 { @apply grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5; }
+  .grid-responsive-cards { @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3; }
+  .grid-responsive-wide { @apply grid grid-cols-1 lg:grid-cols-2; }
+}
+
+* {
+  -ms-overflow-style: none; 
+  scrollbar-width: none; 
+}
+
+*::-webkit-scrollbar {
+  display: none; 
+}
