@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { DesktopNavbar } from "./DesktopNavbar";
 import { TabletSidebar } from "./TabletSidebar";
 import { TabletHeader } from "./TabletHeader";
@@ -95,7 +96,10 @@ export function ResponsiveLayout({
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           currentPath={currentPath}
         />
-        <div className="flex-1 flex flex-col">
+        <div className={cn(
+          "flex-1 flex flex-col transition-all duration-300",
+          sidebarCollapsed ? "ml-16" : "ml-64"
+        )}>
           <TabletHeader sidebarCollapsed={sidebarCollapsed} />
           <PaymentNotificationBanner />
           <main className="flex-1 pt-14 animate-fade-in">

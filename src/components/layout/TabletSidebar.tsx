@@ -40,7 +40,7 @@ export function TabletSidebar({ collapsed, onToggle, currentPath }: TabletSideba
 
   return (
     <aside className={cn(
-      "fixed left-0 top-0 h-screen bg-sidebar-background border-r border-sidebar-border transition-all duration-300 z-40",
+      "fixed left-0 top-0 h-screen bg-background border-r border-border transition-all duration-300 z-40",
       collapsed ? "w-16" : "w-64"
     )}>
       <div className="flex flex-col h-full">
