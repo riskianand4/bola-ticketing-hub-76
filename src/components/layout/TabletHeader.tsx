@@ -61,12 +61,10 @@ export function TabletHeader({ sidebarCollapsed }: TabletHeaderProps) {
 
   return (
     <header
-      className={`fixed top-0 right-0 z-30 h-14 border-b border-border bg-background/95 backdrop-blur-md transition-all duration-300 ${
-        sidebarCollapsed ? 'left-16' : 'left-64'
+      className={`fixed top-0 z-40 h-14 border-b border-border bg-card/95 backdrop-blur-md transition-all duration-300 ${
+        sidebarCollapsed ? 'left-16 right-0' : 'left-64 right-0'
       } ${
-        scrolled
-          ? "shadow-sm"
-          : ""
+        scrolled ? "shadow-sm" : ""
       }`}
     >
       <div className="flex items-center justify-between h-full px-4">

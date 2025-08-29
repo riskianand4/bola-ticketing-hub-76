@@ -90,8 +90,8 @@ export function ResponsiveLayout({
   // Tablet Layout
   if (isTablet) {
     return (
-      <div className="min-h-screen bg-background flex">
-        <TabletSidebar 
+      <div className="min-h-screen bg-background">
+        <TabletSidebar
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           currentPath={currentPath}

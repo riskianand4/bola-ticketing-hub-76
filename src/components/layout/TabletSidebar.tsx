@@ -40,12 +40,12 @@ export function TabletSidebar({ collapsed, onToggle, currentPath }: TabletSideba
 
   return (
     <aside className={cn(
-      "fixed left-0 top-0 h-screen bg-background border-r border-border transition-all duration-300 z-40",
+      "fixed left-0 top-0 h-screen bg-card border-r border-border shadow-lg transition-all duration-300 z-50",
       collapsed ? "w-16" : "w-64"
     )}>
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-between p-4 border-b border-border bg-card">
           <div className="flex items-center space-x-2">
             <img src="/icons/persiraja-logo.png" alt="Persiraja" className="w-8 h-8" />
             {!collapsed && (
