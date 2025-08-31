@@ -46,7 +46,7 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
     try {
       setLoading(true);
       
-      // Fetch top-level comments with profile data
+      // Fetch top-level comments
       const { data: commentsData, error: commentsError } = await supabase
         .from('news_comments')
         .select(`
@@ -55,8 +55,7 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
           created_at,
           user_id,
           news_id,
-          parent_id,
-          profiles!inner(full_name, avatar_url)
+          parent_id
         `)
         .eq('news_id', newsId)
         .is('parent_id', null)
@@ -70,6 +69,13 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
       // Fetch replies for each comment
       const commentsWithReplies = await Promise.all(
         (commentsData || []).map(async (comment) => {
+          // Get profile data for comment
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('user_id', comment.user_id)
+            .maybeSingle();
+
           const { data: repliesData } = await supabase
             .from('news_comments')
             .select(`
@@ -78,8 +84,7 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
               created_at,
               user_id,
               news_id,
-              parent_id,
-              profiles!inner(full_name, avatar_url)
+              parent_id
             `)
             .eq('parent_id', comment.id)
             .order('created_at', { ascending: true });
@@ -105,6 +110,13 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
           // Process replies with likes
           const repliesWithLikes = await Promise.all(
             (repliesData || []).map(async (reply) => {
+              // Get profile data for reply
+              const { data: replyProfileData } = await supabase
+                .from('profiles')
+                .select('full_name, avatar_url')
+                .eq('user_id', reply.user_id)
+                .maybeSingle();
+
               const { count: replyLikesCount } = await supabase
                 .from('news_comment_likes')
                 .select('*', { count: 'exact', head: true })
@@ -124,7 +136,11 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
               return {
                 ...reply,
                 likes_count: replyLikesCount || 0,
-                is_liked: isReplyLiked
+                is_liked: isReplyLiked,
+                profiles: {
+                  full_name: replyProfileData?.full_name || 'Anonymous',
+                  avatar_url: replyProfileData?.avatar_url
+                }
               };
             })
           );
@@ -133,7 +149,11 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
             ...comment,
             likes_count: likesCount || 0,
             is_liked: isLiked,
-            replies: repliesWithLikes
+            replies: repliesWithLikes,
+            profiles: {
+              full_name: profileData?.full_name || 'Anonymous',
+              avatar_url: profileData?.avatar_url
+            }
           };
         })
       );
@@ -173,8 +193,7 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
           created_at,
           user_id,
           news_id,
-          parent_id,
-          profiles!inner(full_name, avatar_url)
+          parent_id
         `)
         .single();
 
@@ -184,11 +203,22 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
         return;
       }
 
+      // Get user profile data
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
       const commentWithLikes = {
         ...newCommentData,
         likes_count: 0,
         is_liked: false,
-        replies: []
+        replies: [],
+        profiles: {
+          full_name: profileData?.full_name || 'Anonymous',
+          avatar_url: profileData?.avatar_url
+        }
       };
 
       setComments(prev => [commentWithLikes, ...prev]);
@@ -228,8 +258,7 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
           created_at,
           user_id,
           news_id,
-          parent_id,
-          profiles!inner(full_name, avatar_url)
+          parent_id
         `)
         .single();
 
@@ -239,10 +268,21 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
         return;
       }
 
+      // Get user profile data
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
       const replyWithLikes = {
         ...newReplyData,
         likes_count: 0,
-        is_liked: false
+        is_liked: false,
+        profiles: {
+          full_name: profileData?.full_name || 'Anonymous',
+          avatar_url: profileData?.avatar_url
+        }
       };
 
       setComments(prev => prev.map(comment => 
