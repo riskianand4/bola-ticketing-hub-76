@@ -212,7 +212,8 @@ export default function TicketScannerPage() {
       // Proper cleanup to prevent memory leaks
       if (readerRef.current) {
         try {
-          readerRef.current.reset();
+          // Use proper ZXing cleanup method
+          readerRef.current.decodeOnceFromVideoDevice(undefined, 'videoElement');
         } catch (error) {
           console.debug('Reader cleanup error:', error);
         }
