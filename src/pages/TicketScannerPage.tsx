@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { BrowserMultiFormatReader } from '@zxing/browser';
 import {
   LogOut,
   Scan,
@@ -24,9 +27,12 @@ import {
   Clock,
   Shield,
   Info,
+  Flashlight,
+  FlashlightOff,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
-// Mock interfaces for demo
 interface ScannerUser {
   id: string;
   username: string;
@@ -66,32 +72,16 @@ interface ScanStats {
 }
 
 export default function TicketScannerPage() {
-  const [scannerUser, setScannerUser] = useState<ScannerUser | null>({
-    id: "1",
-    username: "scanner1",
-    full_name: "Scanner User",
-    is_active: true
-  });
+  const [scannerUser, setScannerUser] = useState<ScannerUser | null>(null);
   const [ticketId, setTicketId] = useState("");
   const [loading, setLoading] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
-  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([
-    {
-      id: "1",
-      ticket_order_id: "TK001",
-      customer_name: "John Doe",
-      ticket_type: "VIP",
-      match_info: "Persiraja vs PSM Makassar",
-      quantity: 2,
-      scanned_at: new Date().toISOString(),
-      status: "success"
-    }
-  ]);
+  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([]);
   const [scanStats, setScanStats] = useState<ScanStats>({
-    total_scans: 156,
-    successful_scans: 142,
-    today_scans: 23,
-    unique_customers: 89,
+    total_scans: 0,
+    successful_scans: 0,
+    today_scans: 0,
+    unique_customers: 0,
   });
   const [scanMethod, setScanMethod] = useState<"manual" | "barcode">("manual");
   const [isScanning, setIsScanning] = useState(false);
@@ -104,17 +94,57 @@ export default function TicketScannerPage() {
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [scanningAnimation, setScanningAnimation] = useState(0);
-  const [scanCounter, setScanCounter] = useState(0);
   const [debugInfo, setDebugInfo] = useState("");
+  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  
+  // ZXing barcode reader
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
-  // Mock toast function
-  const toast = {
-    success: (message: string) => console.log("SUCCESS:", message),
-    error: (message: string) => console.log("ERROR:", message),
-    info: (message: string) => console.log("INFO:", message)
-  };
+  // Audio feedback
+  const playSound = useCallback((type: 'success' | 'error' | 'scan') => {
+    if (!soundEnabled) return;
+    
+    const audio = new Audio();
+    const frequency = type === 'success' ? 800 : type === 'error' ? 300 : 600;
+    const duration = type === 'scan' ? 100 : 200;
+    
+    // Create audio context for beep sound
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'square';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration / 1000);
+    } catch (error) {
+      console.debug('Audio feedback not available:', error);
+    }
+  }, [soundEnabled]);
 
   useEffect(() => {
+    // Check scanner user authentication
+    const storedUser = localStorage.getItem('scanner_user');
+    if (storedUser) {
+      setScannerUser(JSON.parse(storedUser));
+    }
+    
+    // Initialize ZXing reader
+    readerRef.current = new BrowserMultiFormatReader();
+    
     // Check camera support
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setBarcodeSupported(false);
@@ -126,33 +156,134 @@ export default function TicketScannerPage() {
       setBarcodeSupported(false);
       toast.error("Kamera butuh HTTPS atau pakai localhost.");
     }
+    
+    // Check camera permissions
+    checkCameraPermission();
+    
+    // Load available cameras
+    loadAvailableCameras();
+    
+    // Load scan history
+    loadScanHistory();
+    
+    return () => {
+      // Cleanup will be handled in stopBarcodeScanning
+      stopBarcodeScanning();
+    };
   }, []);
+  
+  const checkCameraPermission = async () => {
+    try {
+      const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      setCameraPermission(result.state);
+      
+      result.addEventListener('change', () => {
+        setCameraPermission(result.state);
+      });
+    } catch (error) {
+      console.debug('Permission API not available:', error);
+    }
+  };
+  
+  const loadAvailableCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(device => device.kind === 'videoinput');
+      setAvailableCameras(cameras);
+      
+      // Select rear camera by default
+      const rearCamera = cameras.find(camera => 
+        camera.label.toLowerCase().includes('back') ||
+        camera.label.toLowerCase().includes('rear') ||
+        camera.label.toLowerCase().includes('environment')
+      );
+      
+      if (rearCamera) {
+        setSelectedCameraId(rearCamera.deviceId);
+      } else if (cameras.length > 0) {
+        setSelectedCameraId(cameras[0].deviceId);
+      }
+    } catch (error) {
+      console.debug('Could not enumerate devices:', error);
+    }
+  };
+  
+  const loadScanHistory = async () => {
+    try {
+      // For now, just initialize empty history
+      // Real implementation would load from database when relations are fixed
+      setScanHistory([]);
+    } catch (error) {
+      console.debug('Could not load scan history:', error);
+    }
+  };
 
-  // Mock scan function
-  const mockScanTicket = async (ticketId: string): Promise<ScanResult> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Mock validation logic
-    const isValid = Math.random() > 0.3; // 70% success rate for demo
-    
-    if (isValid) {
+  // Real ticket validation function
+  const validateTicket = async (ticketOrderId: string): Promise<ScanResult> => {
+    try {
+      // Check if ticket order exists and is valid
+      const { data: ticketOrder, error: orderError } = await supabase
+        .from('ticket_orders')
+        .select('*')
+        .eq('id', ticketOrderId)
+        .eq('payment_status', 'paid')
+        .single();
+        
+      if (orderError || !ticketOrder) {
+        return {
+          success: false,
+          message: "Tiket tidak ditemukan atau belum dibayar"
+        };
+      }
+      
+      // Check if ticket has already been scanned
+      const { data: existingScan, error: scanError } = await supabase
+        .from('ticket_scans')
+        .select('*')
+        .eq('ticket_order_id', ticketOrderId)
+        .single();
+        
+      if (!scanError && existingScan) {
+        return {
+          success: false,
+          message: `Tiket sudah pernah di-scan pada ${new Date(existingScan.scanned_at).toLocaleString('id-ID')}`
+        };
+      }
+      
+      // Record the scan
+      const { error: insertError } = await supabase
+        .from('ticket_scans')
+        .insert({
+          ticket_order_id: ticketOrderId,
+          scanner_user_id: scannerUser?.id
+        });
+        
+      if (insertError) {
+        console.error('Failed to record scan:', insertError);
+        return {
+          success: false,
+          message: "Gagal merekam scanning tiket"
+        };
+      }
+      
       return {
         success: true,
         message: "Tiket valid dan berhasil di-scan",
         ticket_info: {
-          customer_name: "Ahmad Rizki",
-          ticket_type: "Tribune Utara",
-          match_info: "Persiraja vs Persib Bandung",
-          match_date: "2024-08-25",
-          quantity: 1,
+          customer_name: ticketOrder.customer_name,
+          ticket_type: "General", // Default ticket type
+          match_info: "Persiraja Match", // Default match info
+          match_date: new Date().toISOString().split('T')[0],
+          quantity: ticketOrder.quantity,
           scanned_at: new Date().toISOString()
         }
       };
-    } else {
+      
+    } catch (error: any) {
+      console.error('Ticket validation error:', error);
       return {
         success: false,
-        message: "Tiket tidak valid atau sudah digunakan"
+        message: "Terjadi kesalahan saat validasi tiket"
       };
     }
   };
@@ -174,11 +305,13 @@ export default function TicketScannerPage() {
     setLastScanResult(null);
 
     try {
-      const result = await mockScanTicket(ticketId.trim());
+      const result = await validateTicket(ticketId.trim());
       setLastScanResult(result);
 
       if (result.success) {
         toast.success(result.message);
+        playSound('success');
+        
         // Update scan history with new scan
         const newScan: ScanHistoryItem = {
           id: Date.now().toString(),
@@ -201,6 +334,7 @@ export default function TicketScannerPage() {
         }));
       } else {
         toast.error(result.message);
+        playSound('error');
       }
 
       setTicketId("");
@@ -212,96 +346,48 @@ export default function TicketScannerPage() {
     }
   };
 
-  // Improved barcode detection with better mock simulation
-  const detectBarcode = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !isScanning) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    
-    if (!context || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      animationRef.current = requestAnimationFrame(detectBarcode);
-      return;
-    }
-
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Draw current video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // Real ZXing barcode detection
+  const detectBarcode = useCallback(async () => {
+    if (!readerRef.current || !videoRef.current || !isScanning) return;
 
     try {
-      // Increment scan counter for simulation
-      setScanCounter(prev => prev + 1);
+      setDebugInfo("Scanning for barcodes...");
       
-      // Enhanced mock barcode detection
-      const mockBarcodeDetection = () => {
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        let edgePixels = 0;
-        let totalPixels = 0;
-        const centerY = Math.floor(canvas.height / 2);
-        const scanLineStart = Math.floor(canvas.width * 0.2);
-        const scanLineEnd = Math.floor(canvas.width * 0.8);
-        
-        // Analyze pixels along the scanning line for edge detection
-        for (let x = scanLineStart; x < scanLineEnd - 1; x++) {
-          const currentPixelIndex = (centerY * canvas.width + x) * 4;
-          const nextPixelIndex = (centerY * canvas.width + (x + 1)) * 4;
-          
-          const currentBrightness = (data[currentPixelIndex] + data[currentPixelIndex + 1] + data[currentPixelIndex + 2]) / 3;
-          const nextBrightness = (data[nextPixelIndex] + data[nextPixelIndex + 1] + data[nextPixelIndex + 2]) / 3;
-          
-          // Detect edges (significant brightness changes)
-          if (Math.abs(currentBrightness - nextBrightness) > 30) {
-            edgePixels++;
-          }
-          totalPixels++;
-        }
-        
-        const edgeRatio = edgePixels / totalPixels;
-        const timeScanning = Date.now() - lastScanTime;
-        
-        // Update debug info
-        setDebugInfo(`Edges: ${edgePixels}/${totalPixels} (${(edgeRatio * 100).toFixed(1)}%), Time: ${(timeScanning / 1000).toFixed(1)}s, Counter: ${scanCounter}`);
-        
-        // Simulate barcode detection based on:
-        // 1. Sufficient edge transitions (indicating barcode patterns)
-        // 2. Enough scanning time (3-8 seconds)
-        // 3. Random factor for realism
-        if (edgeRatio > 0.15 && timeScanning > 3000 && timeScanning < 15000) {
-          // Higher chance of detection with more edges and optimal timing
-          const detectionChance = Math.min(0.3 + (edgeRatio * 2), 0.8);
-          if (Math.random() < detectionChance) {
-            // Generate various mock barcode formats
-            const formats = [
-              () => "TK" + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
-              () => "TICKET" + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
-              () => Math.floor(Math.random() * 1000000000000).toString(),
-              () => "PSJ" + Math.floor(Math.random() * 99999).toString().padStart(5, '0'),
-            ];
-            return formats[Math.floor(Math.random() * formats.length)]();
-          }
-        }
-        
-        return null;
-      };
-
-      const detectedCode = mockBarcodeDetection();
+      const result = await readerRef.current.decodeOnceFromVideoDevice(
+        selectedCameraId || undefined,
+        videoRef.current
+      );
       
-      if (detectedCode && !isProcessingScan) {
-        handleBarcodeDetected(detectedCode);
+      if (result && result.getText()) {
+        handleBarcodeDetected(result.getText());
       }
-    } catch (error) {
-      console.debug("Barcode detection error:", error);
+    } catch (error: any) {
+      // Handle different ZXing exceptions
+      if (error.name === 'NotFoundException') {
+        // No barcode found - this is normal, continue scanning
+        setDebugInfo("No barcode detected, continuing...");
+        if (isScanning) {
+          setTimeout(detectBarcode, 100); // Try again after 100ms
+        }
+      } else if (error.name === 'ChecksumException') {
+        setDebugInfo("Barcode checksum error, retrying...");
+        if (isScanning) {
+          setTimeout(detectBarcode, 100);
+        }
+      } else if (error.name === 'FormatException') {
+        setDebugInfo("Barcode format error, retrying...");
+        if (isScanning) {
+          setTimeout(detectBarcode, 100);
+        }
+      } else {
+        console.debug("Barcode detection error:", error);
+        setDebugInfo(`Scan error: ${error.message}`);
+        if (isScanning) {
+          setTimeout(detectBarcode, 200);
+        }
+      }
     }
-
-    // Continue animation loop
-    animationRef.current = requestAnimationFrame(detectBarcode);
-  }, [isScanning, lastScanTime, isProcessingScan, scanCounter]);
+  }, [isScanning, selectedCameraId]);
 
   const handleBarcodeDetected = useCallback(
     async (result: string) => {
@@ -311,7 +397,7 @@ export default function TicketScannerPage() {
       // Enhanced debouncing and duplicate detection
       if (
         isProcessingScan ||
-        currentTime - lastScanTime < 3000 ||
+        currentTime - lastScanTime < 2000 ||
         trimmedResult === lastScannedCode
       ) {
         console.debug("Barcode scan ignored", {
@@ -326,9 +412,11 @@ export default function TicketScannerPage() {
       // Prevent further scans
       setIsProcessingScan(true);
       setLastScannedCode(trimmedResult);
+      setLastScanTime(currentTime);
       setTicketId(trimmedResult);
 
       console.info("Barcode detected", { result: trimmedResult });
+      playSound('scan');
 
       // Stop scanning immediately to prevent multiple triggers
       stopBarcodeScanning();
@@ -337,11 +425,13 @@ export default function TicketScannerPage() {
       setLastScanResult(null);
 
       try {
-        const scanResult = await mockScanTicket(trimmedResult);
+        const scanResult = await validateTicket(trimmedResult);
         setLastScanResult(scanResult);
 
         if (scanResult.success) {
           toast.success(`✅ Tiket Valid: ${scanResult.message}`);
+          playSound('success');
+          
           console.info("Barcode scan successful", {
             result: trimmedResult,
             message: scanResult.message,
@@ -368,6 +458,8 @@ export default function TicketScannerPage() {
           }));
         } else {
           toast.error(`❌ Tiket Invalid: ${scanResult.message}`);
+          playSound('error');
+          
           console.warn("Barcode scan failed", {
             result: trimmedResult,
             message: scanResult.message,
@@ -380,6 +472,7 @@ export default function TicketScannerPage() {
           result: trimmedResult,
           error,
         });
+        playSound('error');
         toast.error(
           `Kesalahan: ${error.message || "Terjadi kesalahan saat scanning"}`
         );
@@ -388,11 +481,30 @@ export default function TicketScannerPage() {
         // Reset processing state after a delay
         setTimeout(() => {
           setIsProcessingScan(false);
-        }, 2000);
+        }, 3000);
       }
     },
-    [lastScanTime, lastScannedCode, isProcessingScan]
+    [lastScanTime, lastScannedCode, isProcessingScan, playSound]
   );
+
+  const toggleTorch = useCallback(async () => {
+    if (!streamRef.current || !torchSupported) return;
+    
+    try {
+      const track = streamRef.current.getVideoTracks()[0];
+      const capabilities = track.getCapabilities();
+      
+      if ((capabilities as any).torch) {
+        await track.applyConstraints({
+          advanced: [{ torch: !torchEnabled } as any]
+        });
+        setTorchEnabled(!torchEnabled);
+      }
+    } catch (error) {
+      console.debug('Torch toggle failed:', error);
+      toast.error('Gagal mengaktifkan/menonaktifkan senter');
+    }
+  }, [torchEnabled, torchSupported]);
 
   const startBarcodeScanning = async () => {
     if (!barcodeSupported) {
@@ -400,72 +512,73 @@ export default function TicketScannerPage() {
       return;
     }
 
+    if (!readerRef.current) {
+      toast.error("Scanner belum siap, silakan refresh halaman");
+      return;
+    }
+
     try {
       setIsScanning(true);
       setLastScanTime(Date.now());
-      setScanCounter(0);
       setDebugInfo("Starting camera...");
       console.info("Starting barcode scanning");
 
-      // Get available video devices
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter(device => device.kind === "videoinput");
+      // Request camera permission first
+      await navigator.mediaDevices.getUserMedia({ video: true });
 
-      if (cameras.length === 0) {
-        throw new Error("No camera devices found");
-      }
-
-      // Prefer rear camera if available
-      const rearCamera = cameras.find(
-        device =>
-          device.label.toLowerCase().includes("back") ||
-          device.label.toLowerCase().includes("rear") ||
-          device.label.toLowerCase().includes("environment")
+      // Use selected camera or auto-select
+      const cameraId = selectedCameraId || undefined;
+      
+      // Start ZXing reader
+      await readerRef.current.decodeFromVideoDevice(
+        cameraId,
+        videoRef.current!,
+        (result, error) => {
+          if (result) {
+            handleBarcodeDetected(result.getText());
+          }
+          // Errors are handled by ZXing internally for continuous scanning
+        }
       );
 
-      const constraints = {
-        video: {
-          deviceId: rearCamera ? { exact: rearCamera.deviceId } : undefined,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          facingMode: rearCamera ? undefined : "environment",
+      // Check torch support
+      try {
+        const stream = videoRef.current?.srcObject as MediaStream;
+        if (stream) {
+          const track = stream.getVideoTracks()[0];
+          const capabilities = track.getCapabilities();
+          setTorchSupported(!!(capabilities as any).torch);
         }
-      };
-
-      // Get camera stream
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        
-        videoRef.current.onloadedmetadata = () => {
-          setDebugInfo("Camera ready, scanning...");
-          detectBarcode();
-          
-          const animateScanning = () => {
-            setScanningAnimation(prev => (prev + 1) % 100);
-            if (isScanning) {
-              setTimeout(animateScanning, 30);
-            }
-          };
-          animateScanning();
-        };
+      } catch (error) {
+        console.debug('Torch capability check failed:', error);
       }
 
-      console.info("Camera stream started successfully");
-      toast.info("📷 Arahkan kamera ke barcode tiket dan tahan steady");
+      // Start scanning animation
+      const animateScanning = () => {
+        setScanningAnimation(prev => (prev + 1) % 100);
+        if (isScanning) {
+          setTimeout(animateScanning, 50);
+        }
+      };
+      animateScanning();
+
+      console.info("ZXing barcode scanning started successfully");
+      toast.info("📷 Arahkan kamera ke barcode/QR code tiket");
+      setCameraPermission('granted');
+      
     } catch (error: any) {
       setIsScanning(false);
       let errorMessage = "Tidak dapat mengakses kamera";
 
       if (error.name === "NotAllowedError") {
         errorMessage = "Akses kamera ditolak. Silakan izinkan akses kamera di browser.";
+        setCameraPermission('denied');
       } else if (error.name === "NotFoundError") {
         errorMessage = "Kamera tidak ditemukan pada perangkat ini.";
       } else if (error.name === "NotSupportedError") {
         errorMessage = "Kamera tidak didukung pada perangkat ini.";
+      } else if (error.name === "OverconstrainedError") {
+        errorMessage = "Kamera tidak mendukung pengaturan yang diminta.";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -478,21 +591,18 @@ export default function TicketScannerPage() {
   const stopBarcodeScanning = () => {
     setIsScanning(false);
     setScanningAnimation(0);
-    setScanCounter(0);
     setDebugInfo("");
+    setTorchEnabled(false);
     console.info("Stopping barcode scanning");
 
-    // Cancel animation frame
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    // Stop camera stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
-      streamRef.current = null;
+    // Stop ZXing reader scanning
+    if (readerRef.current && videoRef.current) {
+      try {
+        // Create a new reader instance to properly reset
+        readerRef.current = new BrowserMultiFormatReader();
+      } catch (error) {
+        console.debug('Error resetting reader:', error);
+      }
     }
 
     // Clear video element
@@ -759,15 +869,67 @@ export default function TicketScannerPage() {
                         )}
                       </div>
 
-                      {isScanning && (
-                        <Button
-                          onClick={stopBarcodeScanning}
-                          variant="outline"
-                          className="w-full"
-                        >
-                          Stop Scanning
-                        </Button>
-                      )}
+                      <div className="space-y-2">
+                        {/* Camera and Sound Controls */}
+                        <div className="flex gap-2">
+                          {availableCameras.length > 1 && (
+                            <select 
+                              value={selectedCameraId} 
+                              onChange={(e) => setSelectedCameraId(e.target.value)}
+                              className="flex-1 text-xs p-2 border rounded bg-background"
+                              disabled={isScanning}
+                            >
+                              {availableCameras.map(camera => (
+                                <option key={camera.deviceId} value={camera.deviceId}>
+                                  {camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSoundEnabled(!soundEnabled)}
+                            className="px-3"
+                          >
+                            {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                          </Button>
+                          
+                          {torchSupported && isScanning && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={toggleTorch}
+                              className="px-3"
+                            >
+                              {torchEnabled ? <FlashlightOff className="h-4 w-4" /> : <Flashlight className="h-4 w-4" />}
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {isScanning && (
+                          <Button
+                            onClick={stopBarcodeScanning}
+                            variant="outline"
+                            className="w-full"
+                          >
+                            Stop Scanning
+                          </Button>
+                        )}
+                        
+                        {!barcodeSupported && (
+                          <div className="text-xs text-destructive text-center p-2 bg-destructive/10 rounded">
+                            Kamera tidak didukung atau perlu HTTPS
+                          </div>
+                        )}
+                        
+                        {cameraPermission === 'denied' && (
+                          <div className="text-xs text-destructive text-center p-2 bg-destructive/10 rounded">
+                            Akses kamera ditolak. Refresh halaman dan izinkan akses kamera.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </CardContent>
