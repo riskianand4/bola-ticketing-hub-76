@@ -452,48 +452,7 @@ export default function TicketScannerPage() {
     }
   };
 
-  // Real ZXing barcode detection
-  const detectBarcode = useCallback(async () => {
-    if (!readerRef.current || !videoRef.current || !isScanning) return;
-
-    try {
-      setDebugInfo("Scanning for barcodes...");
-      
-      const result = await readerRef.current.decodeOnceFromVideoDevice(
-        selectedCameraId || undefined,
-        videoRef.current
-      );
-      
-      if (result && result.getText()) {
-        handleBarcodeDetected(result.getText());
-      }
-    } catch (error: any) {
-      // Handle different ZXing exceptions
-      if (error.name === 'NotFoundException') {
-        // No barcode found - this is normal, continue scanning
-        setDebugInfo("No barcode detected, continuing...");
-        if (isScanning) {
-          setTimeout(detectBarcode, 100); // Try again after 100ms
-        }
-      } else if (error.name === 'ChecksumException') {
-        setDebugInfo("Barcode checksum error, retrying...");
-        if (isScanning) {
-          setTimeout(detectBarcode, 100);
-        }
-      } else if (error.name === 'FormatException') {
-        setDebugInfo("Barcode format error, retrying...");
-        if (isScanning) {
-          setTimeout(detectBarcode, 100);
-        }
-      } else {
-        console.debug("Barcode detection error:", error);
-        setDebugInfo(`Scan error: ${error.message}`);
-        if (isScanning) {
-          setTimeout(detectBarcode, 200);
-        }
-      }
-    }
-  }, [isScanning, selectedCameraId]);
+  // This function is no longer needed as ZXing handles continuous scanning automatically
 
   const handleBarcodeDetected = useCallback(
     async (result: string) => {
@@ -594,23 +553,45 @@ export default function TicketScannerPage() {
   );
 
   const toggleTorch = useCallback(async () => {
-    if (!streamRef.current || !torchSupported) return;
+    if (!torchSupported) {
+      toast.error('Senter tidak didukung pada perangkat ini');
+      return;
+    }
     
     try {
-      const track = streamRef.current.getVideoTracks()[0];
+      // Get the current video stream from the video element
+      const stream = videoRef.current?.srcObject as MediaStream;
+      if (!stream) {
+        toast.error('Kamera belum aktif');
+        return;
+      }
+      
+      const track = stream.getVideoTracks()[0];
+      if (!track) {
+        toast.error('Track video tidak ditemukan');
+        return;
+      }
+      
       const capabilities = track.getCapabilities();
+      console.log('Camera capabilities:', capabilities);
       
       if ((capabilities as any).torch) {
+        const newTorchState = !torchEnabled;
         await track.applyConstraints({
-          advanced: [{ torch: !torchEnabled } as any]
+          advanced: [{ torch: newTorchState } as any]
         });
-        setTorchEnabled(!torchEnabled);
+        setTorchEnabled(newTorchState);
+        toast.success(`Senter ${newTorchState ? 'dinyalakan' : 'dimatikan'}`);
+        playSound('scan');
+      } else {
+        toast.error('Senter tidak tersedia pada kamera ini');
+        setTorchSupported(false);
       }
-    } catch (error) {
-      console.debug('Torch toggle failed:', error);
-      toast.error('Gagal mengaktifkan/menonaktifkan senter');
+    } catch (error: any) {
+      console.error('Torch toggle failed:', error);
+      toast.error(`Gagal mengaktifkan senter: ${error.message}`);
     }
-  }, [torchEnabled, torchSupported]);
+  }, [torchEnabled, torchSupported, playSound]);
 
   const startBarcodeScanning = async () => {
     if (!barcodeSupported) {
@@ -647,14 +628,25 @@ export default function TicketScannerPage() {
         }
       );
 
-      // Check torch support
+      // Check torch support after stream is established
       try {
-        const stream = videoRef.current?.srcObject as MediaStream;
-        if (stream) {
-          const track = stream.getVideoTracks()[0];
-          const capabilities = track.getCapabilities();
-          setTorchSupported(!!(capabilities as any).torch);
-        }
+        // Wait a bit for the stream to be fully established
+        setTimeout(() => {
+          const stream = videoRef.current?.srcObject as MediaStream;
+          if (stream) {
+            streamRef.current = stream; // Store stream reference
+            const track = stream.getVideoTracks()[0];
+            if (track) {
+              const capabilities = track.getCapabilities();
+              const hasTorch = !!(capabilities as any).torch;
+              setTorchSupported(hasTorch);
+              console.log('Torch support detected:', hasTorch);
+              if (hasTorch) {
+                toast.success('Senter tersedia - klik tombol senter untuk mengaktifkan');
+              }
+            }
+          }
+        }, 1000);
       } catch (error) {
         console.debug('Torch capability check failed:', error);
       }
@@ -702,13 +694,21 @@ export default function TicketScannerPage() {
     console.info("Stopping barcode scanning");
 
     // Stop ZXing reader scanning
-    if (readerRef.current && videoRef.current) {
+    if (readerRef.current) {
       try {
-        // Create a new reader instance to properly reset
+        // Create a new reader instance to stop the current scanning
         readerRef.current = new BrowserMultiFormatReader();
       } catch (error) {
         console.debug('Error resetting reader:', error);
       }
+    }
+
+    // Stop all tracks in the stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      streamRef.current = null;
     }
 
     // Clear video element
