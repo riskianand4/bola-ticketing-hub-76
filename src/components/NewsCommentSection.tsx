@@ -14,6 +14,7 @@ interface Comment {
   content: string;
   created_at: string;
   user_id: string;
+  news_id: string;
   parent_id?: string;
   likes_count: number;
   is_liked: boolean;
@@ -43,40 +44,104 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
 
   const loadComments = async () => {
     try {
-      // In a real implementation, you would have a comments table
-      // For now, we'll show placeholder comments
-      const mockComments: Comment[] = [
-        {
-          id: '1',
-          content: 'Wah berita yang menarik! Semoga tim makin sukses',
-          created_at: new Date().toISOString(),
-          user_id: 'user1',
-          likes_count: 5,
-          is_liked: false,
-          profiles: {
-            full_name: 'Ahmad Supporter',
-            avatar_url: undefined
-          },
-          replies: [
-            {
-              id: '2',
-              content: 'Setuju! Persiraja yang terbaik!',
-              created_at: new Date().toISOString(),
-              user_id: 'user2',
-              parent_id: '1',
-              likes_count: 2,
-              is_liked: false,
-              profiles: {
-                full_name: 'Budi Fan'
-              }
-            }
-          ]
-        }
-      ];
+      setLoading(true);
       
-      setComments(mockComments);
+      // Fetch top-level comments with profile data
+      const { data: commentsData, error: commentsError } = await supabase
+        .from('news_comments')
+        .select(`
+          id,
+          content,
+          created_at,
+          user_id,
+          news_id,
+          parent_id,
+          profiles!inner(full_name, avatar_url)
+        `)
+        .eq('news_id', newsId)
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
+
+      if (commentsError) {
+        console.error('Error fetching comments:', commentsError);
+        return;
+      }
+
+      // Fetch replies for each comment
+      const commentsWithReplies = await Promise.all(
+        (commentsData || []).map(async (comment) => {
+          const { data: repliesData } = await supabase
+            .from('news_comments')
+            .select(`
+              id,
+              content,
+              created_at,
+              user_id,
+              news_id,
+              parent_id,
+              profiles!inner(full_name, avatar_url)
+            `)
+            .eq('parent_id', comment.id)
+            .order('created_at', { ascending: true });
+
+          // Get likes count for comment
+          const { count: likesCount } = await supabase
+            .from('news_comment_likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('comment_id', comment.id);
+
+          // Check if current user liked this comment
+          let isLiked = false;
+          if (user) {
+            const { data: userLike } = await supabase
+              .from('news_comment_likes')
+              .select('id')
+              .eq('comment_id', comment.id)
+              .eq('user_id', user.id)
+              .maybeSingle();
+            isLiked = !!userLike;
+          }
+
+          // Process replies with likes
+          const repliesWithLikes = await Promise.all(
+            (repliesData || []).map(async (reply) => {
+              const { count: replyLikesCount } = await supabase
+                .from('news_comment_likes')
+                .select('*', { count: 'exact', head: true })
+                .eq('comment_id', reply.id);
+
+              let isReplyLiked = false;
+              if (user) {
+                const { data: userReplyLike } = await supabase
+                  .from('news_comment_likes')
+                  .select('id')
+                  .eq('comment_id', reply.id)
+                  .eq('user_id', user.id)
+                  .maybeSingle();
+                isReplyLiked = !!userReplyLike;
+              }
+
+              return {
+                ...reply,
+                likes_count: replyLikesCount || 0,
+                is_liked: isReplyLiked
+              };
+            })
+          );
+
+          return {
+            ...comment,
+            likes_count: likesCount || 0,
+            is_liked: isLiked,
+            replies: repliesWithLikes
+          };
+        })
+      );
+
+      setComments(commentsWithReplies);
     } catch (error) {
       console.error('Error loading comments:', error);
+      toast.error('Gagal memuat komentar');
     } finally {
       setLoading(false);
     }
@@ -95,21 +160,38 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
 
     setSubmitting(true);
     try {
-      // In a real implementation, you would save to comments table
-      const mockNewComment: Comment = {
-        id: Date.now().toString(),
-        content: newComment,
-        created_at: new Date().toISOString(),
-        user_id: user.id,
+      const { data: newCommentData, error } = await supabase
+        .from('news_comments')
+        .insert([{
+          news_id: newsId,
+          user_id: user.id,
+          content: newComment.trim()
+        }])
+        .select(`
+          id,
+          content,
+          created_at,
+          user_id,
+          news_id,
+          parent_id,
+          profiles!inner(full_name, avatar_url)
+        `)
+        .single();
+
+      if (error) {
+        console.error('Error submitting comment:', error);
+        toast.error('Gagal menambahkan komentar');
+        return;
+      }
+
+      const commentWithLikes = {
+        ...newCommentData,
         likes_count: 0,
         is_liked: false,
-        profiles: {
-          full_name: user.user_metadata?.full_name || 'User',
-          avatar_url: undefined
-        }
+        replies: []
       };
 
-      setComments(prev => [mockNewComment, ...prev]);
+      setComments(prev => [commentWithLikes, ...prev]);
       setNewComment('');
       toast.success('Komentar berhasil ditambahkan');
     } catch (error) {
@@ -132,23 +214,40 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
     }
 
     try {
-      const mockReply: Comment = {
-        id: Date.now().toString(),
-        content: replyContent,
-        created_at: new Date().toISOString(),
-        user_id: user.id,
-        parent_id: parentId,
+      const { data: newReplyData, error } = await supabase
+        .from('news_comments')
+        .insert([{
+          news_id: newsId,
+          user_id: user.id,
+          content: replyContent.trim(),
+          parent_id: parentId
+        }])
+        .select(`
+          id,
+          content,
+          created_at,
+          user_id,
+          news_id,
+          parent_id,
+          profiles!inner(full_name, avatar_url)
+        `)
+        .single();
+
+      if (error) {
+        console.error('Error submitting reply:', error);
+        toast.error('Gagal menambahkan balasan');
+        return;
+      }
+
+      const replyWithLikes = {
+        ...newReplyData,
         likes_count: 0,
-        is_liked: false,
-        profiles: {
-          full_name: user.user_metadata?.full_name || 'User',
-          avatar_url: undefined
-        }
+        is_liked: false
       };
 
       setComments(prev => prev.map(comment => 
         comment.id === parentId 
-          ? { ...comment, replies: [...(comment.replies || []), mockReply] }
+          ? { ...comment, replies: [...(comment.replies || []), replyWithLikes] }
           : comment
       ));
       
@@ -167,17 +266,79 @@ export function NewsCommentSection({ newsId }: NewsCommentSectionProps) {
       return;
     }
 
-    // Update like status locally
-    setComments(prev => prev.map(comment => {
-      if (comment.id === commentId) {
-        return {
-          ...comment,
-          is_liked: !comment.is_liked,
-          likes_count: comment.is_liked ? comment.likes_count - 1 : comment.likes_count + 1
-        };
+    try {
+      // Check if user already liked this comment
+      const { data: existingLike } = await supabase
+        .from('news_comment_likes')
+        .select('id')
+        .eq('comment_id', commentId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingLike) {
+        // Remove like
+        await supabase
+          .from('news_comment_likes')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', user.id);
+
+        // Update local state
+        setComments(prev => prev.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              is_liked: false,
+              likes_count: comment.likes_count - 1
+            };
+          }
+          if (comment.replies) {
+            return {
+              ...comment,
+              replies: comment.replies.map(reply => 
+                reply.id === commentId 
+                  ? { ...reply, is_liked: false, likes_count: reply.likes_count - 1 }
+                  : reply
+              )
+            };
+          }
+          return comment;
+        }));
+      } else {
+        // Add like
+        await supabase
+          .from('news_comment_likes')
+          .insert([{
+            comment_id: commentId,
+            user_id: user.id
+          }]);
+
+        // Update local state
+        setComments(prev => prev.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              is_liked: true,
+              likes_count: comment.likes_count + 1
+            };
+          }
+          if (comment.replies) {
+            return {
+              ...comment,
+              replies: comment.replies.map(reply => 
+                reply.id === commentId 
+                  ? { ...reply, is_liked: true, likes_count: reply.likes_count + 1 }
+                  : reply
+              )
+            };
+          }
+          return comment;
+        }));
       }
-      return comment;
-    }));
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      toast.error('Gagal memperbarui like');
+    }
   };
 
   const formatDate = (dateString: string) => {
