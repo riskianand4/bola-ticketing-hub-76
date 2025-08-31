@@ -105,17 +105,28 @@ export default function TicketScannerPage() {
   // ZXing barcode reader
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
 
-  // Audio feedback
+  // Enhanced audio feedback with fallbacks
   const playSound = useCallback((type: 'success' | 'error' | 'scan') => {
     if (!soundEnabled) return;
     
-    const audio = new Audio();
     const frequency = type === 'success' ? 800 : type === 'error' ? 300 : 600;
     const duration = type === 'scan' ? 100 : 200;
     
-    // Create audio context for beep sound
+    // Create audio context for beep sound with fallbacks
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) {
+        console.debug('AudioContext not supported');
+        return;
+      }
+      
+      const audioContext = new AudioContext();
+      
+      // Resume context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
@@ -130,8 +141,22 @@ export default function TicketScannerPage() {
       
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + duration / 1000);
+      
+      // Cleanup after sound
+      setTimeout(() => {
+        try {
+          audioContext.close();
+        } catch (error) {
+          console.debug('AudioContext cleanup error:', error);
+        }
+      }, duration + 100);
+      
     } catch (error) {
       console.debug('Audio feedback not available:', error);
+      // Fallback to simple vibration if available
+      if (navigator.vibrate && type !== 'scan') {
+        navigator.vibrate(type === 'success' ? [100, 50, 100] : [200]);
+      }
     }
   }, [soundEnabled]);
 
@@ -139,11 +164,28 @@ export default function TicketScannerPage() {
     // Check scanner user authentication
     const storedUser = localStorage.getItem('scanner_user');
     if (storedUser) {
-      setScannerUser(JSON.parse(storedUser));
+      try {
+        const user = JSON.parse(storedUser);
+        setScannerUser(user);
+      } catch (error) {
+        console.error('Invalid scanner user data:', error);
+        localStorage.removeItem('scanner_user');
+        window.location.href = '/scanner-login';
+        return;
+      }
+    } else {
+      // Redirect to login if no scanner user found
+      window.location.href = '/scanner-login';
+      return;
     }
     
-    // Initialize ZXing reader
-    readerRef.current = new BrowserMultiFormatReader();
+    // Initialize ZXing reader with better error handling
+    try {
+      readerRef.current = new BrowserMultiFormatReader();
+    } catch (error) {
+      console.error('Failed to initialize barcode reader:', error);
+      setBarcodeSupported(false);
+    }
     
     // Check camera support
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -167,7 +209,14 @@ export default function TicketScannerPage() {
     loadScanHistory();
     
     return () => {
-      // Cleanup will be handled in stopBarcodeScanning
+      // Proper cleanup to prevent memory leaks
+      if (readerRef.current) {
+        try {
+          readerRef.current.reset();
+        } catch (error) {
+          console.debug('Reader cleanup error:', error);
+        }
+      }
       stopBarcodeScanning();
     };
   }, []);
@@ -218,18 +267,38 @@ export default function TicketScannerPage() {
     }
   };
 
-  // Real ticket validation function
+  // Real ticket validation function with proper database logic
   const validateTicket = async (ticketOrderId: string): Promise<ScanResult> => {
     try {
-      // Check if ticket order exists and is valid
+      // Check if ticket order exists and is valid (using correct payment_status)
       const { data: ticketOrder, error: orderError } = await supabase
         .from('ticket_orders')
-        .select('*')
+        .select(`
+          *,
+          tickets (
+            ticket_type,
+            match_id,
+            matches (
+              home_team,
+              away_team,
+              match_date,
+              status
+            )
+          )
+        `)
         .eq('id', ticketOrderId)
-        .eq('payment_status', 'paid')
-        .single();
+        .eq('payment_status', 'completed')
+        .maybeSingle();
         
-      if (orderError || !ticketOrder) {
+      if (orderError) {
+        console.error('Database error:', orderError);
+        return {
+          success: false,
+          message: "Terjadi kesalahan saat memuat data tiket"
+        };
+      }
+
+      if (!ticketOrder) {
         return {
           success: false,
           message: "Tiket tidak ditemukan atau belum dibayar"
@@ -241,12 +310,29 @@ export default function TicketScannerPage() {
         .from('ticket_scans')
         .select('*')
         .eq('ticket_order_id', ticketOrderId)
-        .single();
+        .maybeSingle();
         
-      if (!scanError && existingScan) {
+      if (scanError) {
+        console.error('Scan check error:', scanError);
+        return {
+          success: false,
+          message: "Terjadi kesalahan saat memeriksa riwayat scan"
+        };
+      }
+
+      if (existingScan) {
         return {
           success: false,
           message: `Tiket sudah pernah di-scan pada ${new Date(existingScan.scanned_at).toLocaleString('id-ID')}`
+        };
+      }
+
+      // Check if match has expired (if match data available)
+      const matchData = ticketOrder.tickets?.matches;
+      if (matchData && matchData.match_date && new Date(matchData.match_date) < new Date()) {
+        return {
+          success: false,
+          message: "Tiket sudah kadaluarsa (pertandingan telah berakhir)"
         };
       }
       
@@ -266,14 +352,23 @@ export default function TicketScannerPage() {
         };
       }
       
+      // Get proper match info
+      const matchInfo = matchData 
+        ? `${matchData.home_team} vs ${matchData.away_team}`
+        : "Persiraja Match";
+      
+      const matchDate = matchData?.match_date 
+        ? new Date(matchData.match_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
       return {
         success: true,
         message: "Tiket valid dan berhasil di-scan",
         ticket_info: {
           customer_name: ticketOrder.customer_name,
-          ticket_type: "General", // Default ticket type
-          match_info: "Persiraja Match", // Default match info
-          match_date: new Date().toISOString().split('T')[0],
+          ticket_type: ticketOrder.tickets?.ticket_type || "General",
+          match_info: matchInfo,
+          match_date: matchDate,
           quantity: ticketOrder.quantity,
           scanned_at: new Date().toISOString()
         }
@@ -289,8 +384,18 @@ export default function TicketScannerPage() {
   };
 
   const handleLogout = () => {
+    // Clear scanner user data and redirect
+    localStorage.removeItem('scanner_user');
+    setScannerUser(null);
+    
+    // Stop any ongoing scanning
+    stopBarcodeScanning();
+    
     toast.success("Logout berhasil");
-    console.log("User logged out");
+    console.log("Scanner user logged out");
+    
+    // Redirect to scanner login
+    window.location.href = '/scanner-login';
   };
 
   const handleScan = async (e: React.FormEvent) => {
