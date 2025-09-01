@@ -466,17 +466,22 @@ export default function TicketScannerPage() {
       const currentTime = Date.now();
       const trimmedResult = result.trim();
 
+      console.log("Barcode detected by ZXing:", trimmedResult); // Debug log
+
       // Check if scanning is still active and prevent multiple scans
-      if (
-        !isScanning ||
-        isProcessingScan ||
-        currentTime - lastScanTime < 3000 ||
-        trimmedResult === lastScannedCode
-      ) {
-        console.debug("Barcode scan ignored", {
+      if (!isScanning || isProcessingScan) {
+        console.debug("Barcode scan ignored - not scanning or processing", {
           result: trimmedResult,
           isScanning,
-          isProcessing: isProcessingScan,
+          isProcessing: isProcessingScan
+        });
+        return;
+      }
+
+      // Prevent duplicate scans within short time frame only
+      if (lastScanTime > 0 && currentTime - lastScanTime < 2000 && trimmedResult === lastScannedCode) {
+        console.debug("Barcode scan ignored - duplicate too soon", {
+          result: trimmedResult,
           timeSince: currentTime - lastScanTime,
           isDuplicate: trimmedResult === lastScannedCode,
         });
@@ -490,7 +495,7 @@ export default function TicketScannerPage() {
       setTicketId(trimmedResult);
       stopBarcodeScanning();
 
-      console.info("Barcode detected", { result: trimmedResult });
+      console.info("Processing barcode", { result: trimmedResult });
       playSound('scan');
 
       setLoading(true);
@@ -616,8 +621,9 @@ export default function TicketScannerPage() {
       cleanupModeRef.current = false;
       
       setIsScanning(true);
-      setLastScanTime(Date.now());
+      setLastScanTime(0); // Reset to 0 so first scan isn't blocked
       setIsProcessingScan(false); // Reset processing state
+      setLastScannedCode(""); // Reset last scanned code
       setDebugInfo("Starting camera...");
       console.info("Starting barcode scanning");
 
