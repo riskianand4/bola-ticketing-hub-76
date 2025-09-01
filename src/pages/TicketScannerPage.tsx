@@ -104,6 +104,7 @@ export default function TicketScannerPage() {
   
   // ZXing barcode reader
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const cleanupModeRef = useRef(false);
 
   // Enhanced audio feedback with fallbacks
   const playSound = useCallback((type: 'success' | 'error' | 'scan') => {
@@ -456,17 +457,25 @@ export default function TicketScannerPage() {
 
   const handleBarcodeDetected = useCallback(
     async (result: string) => {
+      // First check if we're in cleanup mode - ignore all callbacks during cleanup
+      if (cleanupModeRef.current) {
+        console.debug("Barcode detection ignored - cleanup mode active");
+        return;
+      }
+
       const currentTime = Date.now();
       const trimmedResult = result.trim();
 
-      // Enhanced debouncing and duplicate detection
+      // Check if scanning is still active and prevent multiple scans
       if (
+        !isScanning ||
         isProcessingScan ||
-        currentTime - lastScanTime < 2000 ||
+        currentTime - lastScanTime < 3000 ||
         trimmedResult === lastScannedCode
       ) {
         console.debug("Barcode scan ignored", {
           result: trimmedResult,
+          isScanning,
           isProcessing: isProcessingScan,
           timeSince: currentTime - lastScanTime,
           isDuplicate: trimmedResult === lastScannedCode,
@@ -474,17 +483,15 @@ export default function TicketScannerPage() {
         return;
       }
 
-      // Prevent further scans
+      // Prevent further scans and stop scanning immediately
       setIsProcessingScan(true);
       setLastScannedCode(trimmedResult);
       setLastScanTime(currentTime);
       setTicketId(trimmedResult);
+      stopBarcodeScanning();
 
       console.info("Barcode detected", { result: trimmedResult });
       playSound('scan');
-
-      // Stop scanning immediately to prevent multiple triggers
-      stopBarcodeScanning();
 
       setLoading(true);
       setLastScanResult(null);
@@ -549,7 +556,7 @@ export default function TicketScannerPage() {
         }, 3000);
       }
     },
-    [lastScanTime, lastScannedCode, isProcessingScan, playSound]
+    [isScanning, isProcessingScan, lastScanTime, lastScannedCode, playSound, validateTicket, scannerUser?.id]
   );
 
   const toggleTorch = useCallback(async () => {
@@ -605,8 +612,12 @@ export default function TicketScannerPage() {
     }
 
     try {
+      // Reset cleanup mode when starting scanning
+      cleanupModeRef.current = false;
+      
       setIsScanning(true);
       setLastScanTime(Date.now());
+      setIsProcessingScan(false); // Reset processing state
       setDebugInfo("Starting camera...");
       console.info("Starting barcode scanning");
 
@@ -687,36 +698,60 @@ export default function TicketScannerPage() {
   };
 
   const stopBarcodeScanning = () => {
+    console.info("Stopping barcode scanning");
+    
+    // Set cleanup mode flag to prevent any callback execution
+    cleanupModeRef.current = true;
+    
+    // First set the state to stop any ongoing operations
     setIsScanning(false);
     setScanningAnimation(0);
     setDebugInfo("");
     setTorchEnabled(false);
-    console.info("Stopping barcode scanning");
 
-    // Stop ZXing reader scanning
+    // Stop ZXing reader with proper cleanup
     if (readerRef.current) {
       try {
-        // Create a new reader instance to stop the current scanning
+        // The only reliable way to stop ZXing callbacks is to create a new instance
+        // This completely stops all ongoing decoding operations and callbacks
         readerRef.current = new BrowserMultiFormatReader();
+        console.debug('ZXing reader recreated to stop callbacks');
       } catch (error) {
-        console.debug('Error resetting reader:', error);
+        console.debug('Error recreating ZXing reader:', error);
       }
     }
 
-    // Stop all tracks in the stream
+    // Stop all media tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
-        track.stop();
+        try {
+          track.stop();
+          console.debug('Stopped media track:', track.kind);
+        } catch (error) {
+          console.debug('Error stopping track:', error);
+        }
       });
       streamRef.current = null;
     }
 
-    // Clear video element
+    // Clear video element source
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+      videoRef.current.load(); // Force reload to clear any cached streams
     }
 
-    console.debug("Camera streams stopped successfully");
+    // Reset scanning state variables
+    setLastScanTime(0);
+    setLastScannedCode("");
+    setIsProcessingScan(false);
+
+    // Reset cleanup mode after a delay to allow any pending callbacks to finish
+    setTimeout(() => {
+      cleanupModeRef.current = false;
+      console.debug("Cleanup mode reset");
+    }, 1000);
+
+    console.debug("Camera scanning stopped and state reset successfully");
   };
 
   // Cleanup on component unmount
