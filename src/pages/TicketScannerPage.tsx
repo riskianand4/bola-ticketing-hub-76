@@ -183,9 +183,11 @@ export default function TicketScannerPage() {
     // Initialize ZXing reader with better error handling
     try {
       readerRef.current = new BrowserMultiFormatReader();
+      console.log("ZXing BrowserMultiFormatReader initialized successfully");
     } catch (error) {
       console.error('Failed to initialize barcode reader:', error);
       setBarcodeSupported(false);
+      toast.error("Gagal menginisialisasi barcode reader");
     }
     
     // Check camera support
@@ -634,36 +636,57 @@ export default function TicketScannerPage() {
       const cameraId = selectedCameraId || undefined;
       
       // Start ZXing reader
+      console.log("Starting ZXing decodeFromVideoDevice with camera:", cameraId || "default");
       await readerRef.current.decodeFromVideoDevice(
         cameraId,
         videoRef.current!,
         (result, error) => {
           if (result) {
+            console.log("ZXing successfully decoded barcode:", result.getText());
             handleBarcodeDetected(result.getText());
+          } else if (error && !error.message?.includes('No MultiFormat Readers')) {
+            // Log only significant errors, not the normal "no barcode found" messages
+            console.debug('ZXing scan error:', error.message);
           }
-          // Errors are handled by ZXing internally for continuous scanning
         }
       );
 
+      // Wait for video to be ready before checking capabilities
+      const waitForVideo = () => {
+        return new Promise<void>((resolve) => {
+          if (videoRef.current && videoRef.current.videoWidth > 0) {
+            resolve();
+            return;
+          }
+          
+          const checkVideo = () => {
+            if (videoRef.current && videoRef.current.videoWidth > 0) {
+              resolve();
+            } else {
+              setTimeout(checkVideo, 100);
+            }
+          };
+          checkVideo();
+        });
+      };
+
+      await waitForVideo();
       // Check torch support after stream is established
       try {
-        // Wait a bit for the stream to be fully established
-        setTimeout(() => {
-          const stream = videoRef.current?.srcObject as MediaStream;
-          if (stream) {
-            streamRef.current = stream; // Store stream reference
-            const track = stream.getVideoTracks()[0];
-            if (track) {
-              const capabilities = track.getCapabilities();
-              const hasTorch = !!(capabilities as any).torch;
-              setTorchSupported(hasTorch);
-              console.log('Torch support detected:', hasTorch);
-              if (hasTorch) {
-                toast.success('Senter tersedia - klik tombol senter untuk mengaktifkan');
-              }
+        const stream = videoRef.current?.srcObject as MediaStream;
+        if (stream) {
+          streamRef.current = stream; // Store stream reference
+          const track = stream.getVideoTracks()[0];
+          if (track) {
+            const capabilities = track.getCapabilities();
+            const hasTorch = !!(capabilities as any).torch;
+            setTorchSupported(hasTorch);
+            console.log('Torch support detected:', hasTorch);
+            if (hasTorch) {
+              toast.success('Senter tersedia - klik tombol senter untuk mengaktifkan');
             }
           }
-        }, 1000);
+        }
       } catch (error) {
         console.debug('Torch capability check failed:', error);
       }
@@ -678,6 +701,7 @@ export default function TicketScannerPage() {
       animateScanning();
 
       console.info("ZXing barcode scanning started successfully");
+      console.log("Video element dimensions:", videoRef.current?.videoWidth, "x", videoRef.current?.videoHeight);
       toast.info("📷 Arahkan kamera ke barcode/QR code tiket");
       setCameraPermission('granted');
       
