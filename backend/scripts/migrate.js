@@ -341,6 +341,54 @@ const createTables = async () => {
       page_path TEXT,
       session_id TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )`,
+
+    // Push subscriptions table
+    `CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      UNIQUE(user_id, endpoint)
+    )`,
+
+    -- Live commentary table
+    `CREATE TABLE IF NOT EXISTS live_commentary (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      message TEXT NOT NULL,
+      timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      is_admin BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )`,
+
+    -- Activity logs table
+    `CREATE TABLE IF NOT EXISTS activity_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id UUID,
+      ip_address INET,
+      user_agent TEXT,
+      metadata JSONB DEFAULT '{}',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )`,
+
+    -- API rate limits table
+    `CREATE TABLE IF NOT EXISTS api_rate_limits (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      identifier TEXT NOT NULL, -- IP or user ID
+      endpoint TEXT NOT NULL,
+      request_count INTEGER DEFAULT 1,
+      window_start TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      UNIQUE(identifier, endpoint, window_start)
     )`
   ];
 

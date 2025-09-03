@@ -4,8 +4,17 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
-const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 const path = require('path');
+const http = require('http');
+
+// Import middleware
+const { rateLimits, securityHeaders, requestLogger, mongoSanitize, hpp } = require('./middleware/security');
+const { sanitizeInput } = require('./middleware/validation');
+
+// Import services
+const socketService = require('./services/socketService');
+const cacheService = require('./services/cacheService');
 
 const { connectDB } = require('./config/database');
 const { initializeDatabase } = require('./scripts/migrate');
@@ -23,45 +32,97 @@ const paymentsRoutes = require('./routes/payments');
 const adminRoutes = require('./routes/admin');
 const scannerRoutes = require('./routes/scanner');
 const analyticsRoutes = require('./routes/analytics');
+const swaggerRoutes = require('./routes/swagger');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(helmet());
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
+app.use(securityHeaders);
 app.use(compression());
-app.use(morgan('combined'));
+app.use(cookieParser());
+app.use(requestLogger);
+app.use(mongoSanitize);
+app.use(hpp);
 
 // CORS configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:8080',
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || 'http://localhost:8080',
+      'http://localhost:3000',
+      'http://localhost:5173'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  exposedHeaders: ['X-Total-Count']
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
+app.use('/api/', rateLimits.general);
+app.use('/api/auth/', rateLimits.auth);
+app.use('/api/upload/', rateLimits.upload);
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(sanitizeInput);
 
-// Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static file serving with proper headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '1h',
+  etag: true,
+  lastModified: true
+}));
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
+// Health check with detailed info
+app.get('/health', async (req, res) => {
+  try {
+    const db = getDB();
+    await db.query('SELECT 1');
+    
+    res.json({ 
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      database: 'connected',
+      cache: cacheService.isConnected ? 'connected' : 'disconnected',
+      activeConnections: socketService.getConnectedUsersCount()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
 });
 
 // API Routes
@@ -77,6 +138,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/scanner', scannerRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/docs', swaggerRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -111,10 +173,15 @@ async function startServer() {
     await initializeDatabase();
     console.log('Database initialized successfully');
     
+    // Initialize Socket.IO
+    socketService.initialize(server);
+    
     // Start server
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV}`);
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+      console.log(`📡 Socket.IO enabled`);
+      console.log(`💾 Cache service: ${cacheService.isConnected ? 'connected' : 'disconnected'}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
